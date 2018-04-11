@@ -87,6 +87,12 @@ public:
     return data;
   }
 
+  // dimensionality
+  uint dimensionality() const { return dims; }
+
+  // underlying scalar type
+  zfp_type scalar_type() const { return type; }
+
 protected:
   // allocate memory for compressed data
   void alloc(bool clear = true)
