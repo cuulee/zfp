@@ -198,7 +198,7 @@ mark_as_advanced(ZFP_LIBRARY_PREFIX)
 
 add_subdirectory(src)
 
-option(BUILD_CFP "Build CFP arrays library" OFF)
+option(BUILD_CFP "Build CFP arrays library" ON)
 if(BUILD_CFP)
   add_subdirectory(cfp)
 endif()

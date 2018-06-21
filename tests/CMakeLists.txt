@@ -45,6 +45,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(utils)
 add_subdirectory(src)
+add_subdirectory(cfp)
 
 # TODO: spend time getting googletest to compile on windows
 if(NOT MSVC AND NOT MINGW)

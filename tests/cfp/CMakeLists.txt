@@ -1,0 +1,5 @@
+include_directories(${ZFP_SOURCE_DIR}/cfp/include)
+
+add_executable(testCfpArray1f testCfpArray1f.c)
+target_link_libraries(testCfpArray1f cmocka cfp hash32Lib genSmoothRandNumsLib)
+add_test(NAME testCfpArray1f COMMAND testCfpArray1f)
