@@ -30,14 +30,14 @@ The 7 major tasks to be accomplished are:
 static void
 print_error(const void* fin, const void* fout, zfp_type type, uint n)
 {
-  const int32* i32i = fin;
-  const int64* i64i = fin;
-  const float* f32i = fin;
-  const double* f64i = fin;
-  const int32* i32o = fout;
-  const int64* i64o = fout;
-  const float* f32o = fout;
-  const double* f64o = fout;
+  const int32* i32i = (const int32*)fin;
+  const int64* i64i = (const int64*)fin;
+  const float* f32i = (const float*)fin;
+  const double* f64i = (const double*)fin;
+  const int32* i32o = (const int32*)fout;
+  const int64* i64o = (const int64*)fout;
+  const float* f32o = (const float*)fout;
+  const double* f64o = (const double*)fout;
   double fmin = +DBL_MAX;
   double fmax = -DBL_MAX;
   double erms = 0;
@@ -111,6 +111,7 @@ usage()
   fprintf(stderr, "Execution parameters:\n");
   fprintf(stderr, "  -x serial : serial compression (default)\n");
   fprintf(stderr, "  -x omp[=threads[,chunk_size]] : OpenMP parallel compression\n");
+  fprintf(stderr, "  -x cuda : CUDA fixed rate parallel compression/decompression\n");
   fprintf(stderr, "Examples:\n");
   fprintf(stderr, "  -i file : read uncompressed file and compress to memory\n");
   fprintf(stderr, "  -z file : read compressed file and decompress to memory\n");
@@ -262,6 +263,8 @@ int main(int argc, char* argv[])
           usage();
         if (!strcmp(argv[i], "serial"))
           exec = zfp_exec_serial;
+        else if (!strcmp(argv[i], "cuda"))
+          exec = zfp_exec_cuda;
         else if (sscanf(argv[i], "omp=%u,%u", &threads, &chunk_size) == 2)
           exec = zfp_exec_omp;
         else if (sscanf(argv[i], "omp=%u", &threads) == 1) {
@@ -453,6 +456,11 @@ int main(int argc, char* argv[])
           return EXIT_FAILURE;
         }
         break;
+      case zfp_exec_cuda:
+        if (!zfp_stream_set_execution(zfp, exec)) {
+          fprintf(stderr, "cuda execution not available\n");
+          return EXIT_FAILURE;
+        }
       case zfp_exec_serial:
       default:
         if (!zfp_stream_set_execution(zfp, exec)) {
@@ -514,6 +522,25 @@ int main(int argc, char* argv[])
       nx = MAX(field->nx, 1u);
       ny = MAX(field->ny, 1u);
       nz = MAX(field->nz, 1u);
+    }
+
+    /* specify execution policy */
+    switch (exec) {
+      case zfp_exec_omp: 
+          fprintf(stderr, "OpenMP decompression not available\n");
+          return EXIT_FAILURE;
+      case zfp_exec_cuda:
+        if (!zfp_stream_set_execution(zfp, exec)) {
+          fprintf(stderr, "cuda execution not available\n");
+          return EXIT_FAILURE;
+        }
+      case zfp_exec_serial:
+      default:
+        if (!zfp_stream_set_execution(zfp, exec)) {
+          fprintf(stderr, "serial execution not available\n");
+          return EXIT_FAILURE;
+        }
+        break;
     }
 
     /* allocate memory for decompressed data */

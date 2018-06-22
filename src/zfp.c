@@ -42,24 +42,32 @@ type_precision(zfp_type type)
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/cudacompress.c"
+#include "template/cudadecompress.c"
 #undef Scalar
 
 #define Scalar int64
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/cudacompress.c"
+#include "template/cudadecompress.c"
 #undef Scalar
 
 #define Scalar float
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/cudacompress.c"
+#include "template/cudadecompress.c"
 #undef Scalar
 
 #define Scalar double
 #include "template/compress.c"
 #include "template/decompress.c"
 #include "template/ompcompress.c"
+#include "template/cudacompress.c"
+#include "template/cudadecompress.c"
 #undef Scalar
 
 /* public functions: miscellaneous ----------------------------------------- */
@@ -86,7 +94,7 @@ zfp_type_size(zfp_type type)
 zfp_field*
 zfp_field_alloc()
 {
-  zfp_field* field = malloc(sizeof(zfp_field));
+  zfp_field* field = (zfp_field*)malloc(sizeof(zfp_field));
   if (field) {
     field->type = zfp_type_none;
     field->nx = field->ny = field->nz = 0;
@@ -326,7 +334,7 @@ zfp_field_set_metadata(zfp_field* field, uint64 meta)
 zfp_stream*
 zfp_stream_open(bitstream* stream)
 {
-  zfp_stream* zfp = malloc(sizeof(zfp_stream));
+  zfp_stream* zfp = (zfp_stream*)malloc(sizeof(zfp_stream));
   if (zfp) {
     zfp->stream = stream;
     zfp->minbits = ZFP_MIN_BITS;
@@ -597,6 +605,10 @@ zfp_stream_set_execution(zfp_stream* zfp, zfp_exec_policy policy)
   switch (policy) {
     case zfp_exec_serial:
       break;
+#ifdef ZFP_ENABLE_CUDA
+    case zfp_exec_cuda:
+      break;
+#endif
     case zfp_exec_omp:
 #ifdef _OPENMP
       if (zfp->exec.policy != policy) {
@@ -712,7 +724,7 @@ size_t
 zfp_compress(zfp_stream* zfp, const zfp_field* field)
 {
   /* function table [execution][strided][dimensionality][scalar type] */
-  void (*compress[2][2][3][4])(zfp_stream*, const zfp_field*) = {
+  void (*compress[3][2][3][4])(zfp_stream*, const zfp_field*) = {
     {{{ compress_int32_1,         compress_int64_1,         compress_float_1,         compress_double_1 },
       { compress_strided_int32_2, compress_strided_int64_2, compress_strided_float_2, compress_strided_double_2 },
       { compress_strided_int32_3, compress_strided_int64_3, compress_strided_float_3, compress_strided_double_3 }},
@@ -726,7 +738,20 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
      {{ compress_strided_omp_int32_1, compress_strided_omp_int64_1, compress_strided_omp_float_1, compress_strided_omp_double_1 },
       { compress_strided_omp_int32_2, compress_strided_omp_int64_2, compress_strided_omp_float_2, compress_strided_omp_double_2 },
       { compress_strided_omp_int32_3, compress_strided_omp_int64_3, compress_strided_omp_float_3, compress_strided_omp_double_3 }}},
+#else
+    {{{ NULL, NULL, NULL, NULL},
+      { NULL, NULL, NULL, NULL },
+      { NULL, NULL, NULL, NULL }},
+     {{ NULL, NULL, NULL, NULL },
+      { NULL, NULL, NULL, NULL },
+      { NULL, NULL, NULL, NULL }}},
 #endif
+    {{{ compress_cuda_int32_1,         compress_cuda_int64_1,         compress_cuda_float_1,         compress_cuda_double_1 },
+      { compress_strided_cuda_int32_2, compress_strided_cuda_int64_2, compress_strided_cuda_float_2, compress_strided_cuda_double_2 },
+      { compress_strided_cuda_int32_3, compress_strided_cuda_int64_3, compress_strided_cuda_float_3, compress_strided_cuda_double_3 }},
+     {{ compress_strided_cuda_int32_1, compress_strided_cuda_int64_1, compress_strided_cuda_float_1, compress_strided_cuda_double_1 },
+      { compress_strided_cuda_int32_2, compress_strided_cuda_int64_2, compress_strided_cuda_float_2, compress_strided_cuda_double_2 },
+      { compress_strided_cuda_int32_3, compress_strided_cuda_int64_3, compress_strided_cuda_float_3, compress_strided_cuda_double_3 }}}
   };
   uint exec = zfp->exec.policy;
   uint strided = zfp_field_stride(field, NULL);
@@ -752,15 +777,28 @@ zfp_compress(zfp_stream* zfp, const zfp_field* field)
 size_t
 zfp_decompress(zfp_stream* zfp, zfp_field* field)
 {
-  /* function table [strided][dimensionality][scalar type] */
-  void (*decompress[2][3][4])(zfp_stream*, zfp_field*) = {
-    {{ decompress_int32_1,         decompress_int64_1,         decompress_float_1,         decompress_double_1 },
-     { decompress_strided_int32_2, decompress_strided_int64_2, decompress_strided_float_2, decompress_strided_double_2 },
-     { decompress_strided_int32_3, decompress_strided_int64_3, decompress_strided_float_3, decompress_strided_double_3 }},
-    {{ decompress_strided_int32_1, decompress_strided_int64_1, decompress_strided_float_1, decompress_strided_double_1 },
-     { decompress_strided_int32_2, decompress_strided_int64_2, decompress_strided_float_2, decompress_strided_double_2 },
-     { decompress_strided_int32_3, decompress_strided_int64_3, decompress_strided_float_3, decompress_strided_double_3 }},
+  /* function table [execution][strided][dimensionality][scalar type] */
+  void (*decompress[3][2][3][4])(zfp_stream*, zfp_field*) = {
+    {{{ decompress_int32_1,         decompress_int64_1,         decompress_float_1,         decompress_double_1 },
+      { decompress_strided_int32_2, decompress_strided_int64_2, decompress_strided_float_2, decompress_strided_double_2 },
+      { decompress_strided_int32_3, decompress_strided_int64_3, decompress_strided_float_3, decompress_strided_double_3 }},
+     {{ decompress_strided_int32_1, decompress_strided_int64_1, decompress_strided_float_1, decompress_strided_double_1 },
+      { decompress_strided_int32_2, decompress_strided_int64_2, decompress_strided_float_2, decompress_strided_double_2 },
+      { decompress_strided_int32_3, decompress_strided_int64_3, decompress_strided_float_3, decompress_strided_double_3 }}},
+    {{{ NULL, NULL, NULL, NULL},
+      { NULL, NULL, NULL, NULL },
+      { NULL, NULL, NULL, NULL }},
+     {{ NULL, NULL, NULL, NULL },
+      { NULL, NULL, NULL, NULL },
+      { NULL, NULL, NULL, NULL }}},
+    {{{ decompress_cuda_int32_1,         decompress_cuda_int64_1,         decompress_cuda_float_1,         decompress_cuda_double_1 },
+      { decompress_strided_cuda_int32_2, decompress_strided_cuda_int64_2, decompress_strided_cuda_float_2, decompress_strided_cuda_double_2 },
+      { decompress_strided_cuda_int32_3, decompress_strided_cuda_int64_3, decompress_strided_cuda_float_3, decompress_strided_cuda_double_3 }},
+     {{ decompress_strided_cuda_int32_1, decompress_strided_cuda_int64_1, decompress_strided_cuda_float_1, decompress_strided_cuda_double_1 },
+      { decompress_strided_cuda_int32_2, decompress_strided_cuda_int64_2, decompress_strided_cuda_float_2, decompress_strided_cuda_double_2 },
+      { decompress_strided_cuda_int32_3, decompress_strided_cuda_int64_3, decompress_strided_cuda_float_3, decompress_strided_cuda_double_3 }}}
   };
+  uint exec = zfp->exec.policy;
   uint strided = zfp_field_stride(field, NULL);
   uint dims = zfp_field_dimensionality(field);
   uint type = field->type;
@@ -775,7 +813,7 @@ zfp_decompress(zfp_stream* zfp, zfp_field* field)
       return 0;
   }
 
-  decompress[strided][dims - 1][type - zfp_type_int32](zfp, field);
+  decompress[exec][strided][dims - 1][type - zfp_type_int32](zfp, field);
   stream_align(zfp->stream);
 
   return stream_size(zfp->stream);
