@@ -116,6 +116,8 @@ protected:
     stream_close(stream->stream);
     zfp_stream_set_bit_stream(stream, stream_open(data, totalBytes));
     clear_cache();
+
+    write_header();
   }
 
   // free memory associated with compressed data
@@ -180,6 +182,22 @@ protected:
   size_t compressed_data_offset_bits() const
   {
     return (header_size_bits() + stream_word_bits - 1) & ~(stream_word_bits - 1);
+  }
+
+  // [over]write header with latest metadata
+  void write_header()
+  {
+    zfp_field* field = zfp_field_3d(0, type, nx, ny, nz);
+
+    // pre-pad zeros such that compressed data (blocks)
+    // begin on a word boundary
+    stream_rewind(stream->stream);
+    stream_pad(stream->stream, header_offset_bits());
+
+    zfp_write_header(stream, field, ZFP_HEADER_FULL);
+    stream_flush(stream->stream);
+
+    zfp_field_free(field);
   }
 
   uint dims;           // array dimensionality (1, 2, or 3)
