@@ -55,7 +55,7 @@ protected:
     deep_copy(a);
     return *this;
   }
- 
+
 public:
   // rate in bits per value
   double rate() const { return double(blkbits) / blkvals; }
@@ -76,6 +76,16 @@ public:
   // flush cache by compressing all modified cached blocks
   virtual void flush_cache() const = 0;
 
+  // number of bytes in header (includes padding)
+  size_t header_size() const { return compressed_data_offset_bits() / CHAR_BIT; }
+
+  // pointer to header
+  uchar* header_data() const
+  {
+    flush_cache();
+    return data;
+  }
+
   // number of bytes of compressed data
   size_t compressed_size() const { return bytes; }
 
@@ -84,7 +94,7 @@ public:
   {
     // first write back any modified cached data
     flush_cache();
-    return data;
+    return data + header_size();
   }
 
   // dimensionality
@@ -98,11 +108,13 @@ protected:
   void alloc(bool clear = true)
   {
     bytes = blocks * blksize;
-    reallocate_aligned(data, bytes, 0x100u);
+    size_t totalBytes = bytes + header_size();
+
+    reallocate_aligned(data, totalBytes, 0x100u);
     if (clear)
-      std::fill(data, data + bytes, 0);
+      std::fill(data, data + totalBytes, 0);
     stream_close(stream->stream);
-    zfp_stream_set_bit_stream(stream, stream_open(data, bytes));
+    zfp_stream_set_bit_stream(stream, stream_open(data, totalBytes));
     clear_cache();
   }
 
@@ -140,7 +152,7 @@ protected:
     bytes = a.bytes;
 
     // copy dynamically allocated data
-    clone_aligned(data, a.data, bytes, 0x100u);
+    clone_aligned(data, a.data, bytes + header_size(), 0x100u);
     if (stream) {
       if (stream->stream)
         stream_close(stream->stream);
@@ -148,8 +160,26 @@ protected:
     }
     stream = zfp_stream_open(0);
     *stream = *a.stream;
-    zfp_stream_set_bit_stream(stream, stream_open(data, bytes));
+    zfp_stream_set_bit_stream(stream, stream_open(data, bytes + header_size()));
     clone(shape, a.shape, blocks);
+  }
+
+  size_t header_size_bits() const
+  {
+    return ZFP_MAGIC_BITS + ZFP_META_BITS + ZFP_MODE_SHORT_BITS;
+  }
+
+  // returns offset (in bits) to start of header
+  // (header is pre-padded such that header completes the word)
+  size_t header_offset_bits() const
+  {
+    return stream_word_bits - (header_size_bits() % stream_word_bits);
+  }
+
+  // returns offset (in bits) to start of compressed stream
+  size_t compressed_data_offset_bits() const
+  {
+    return (header_size_bits() + stream_word_bits - 1) & ~(stream_word_bits - 1);
   }
 
   uint dims;           // array dimensionality (1, 2, or 3)
@@ -160,8 +190,8 @@ protected:
   uint blkvals;        // number of values per block
   size_t blkbits;      // number of bits per compressed block
   size_t blksize;      // byte size of single compressed block
-  size_t bytes;        // total bytes of compressed data
-  mutable uchar* data; // pointer to compressed data
+  size_t bytes;        // total bytes of compressed data (excluding header)
+  mutable uchar* data; // pointer to header (followed by compressed data)
   zfp_stream* stream;  // compressed stream
   uchar* shape;        // precomputed block dimensions (or null if uniform)
 };

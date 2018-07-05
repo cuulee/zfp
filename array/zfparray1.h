@@ -308,7 +308,7 @@ protected:
   // encode block with given index
   void encode(uint index, const Scalar* block) const
   {
-    stream_wseek(stream->stream, index * blkbits);
+    stream_wseek(stream->stream, compressed_data_offset_bits() + index * blkbits);
     Codec::encode_block_1(stream, block, shape ? shape[index] : 0);
     stream_flush(stream->stream);
   }
@@ -316,7 +316,7 @@ protected:
   // encode block with given index from strided array
   void encode(uint index, const Scalar* p, int sx) const
   {
-    stream_wseek(stream->stream, index * blkbits);
+    stream_wseek(stream->stream, compressed_data_offset_bits() + index * blkbits);
     Codec::encode_block_strided_1(stream, p, shape ? shape[index] : 0, sx);
     stream_flush(stream->stream);
   }
@@ -324,14 +324,14 @@ protected:
   // decode block with given index
   void decode(uint index, Scalar* block) const
   {
-    stream_rseek(stream->stream, index * blkbits);
+    stream_rseek(stream->stream, compressed_data_offset_bits() + index * blkbits);
     Codec::decode_block_1(stream, block, shape ? shape[index] : 0);
   }
 
   // decode block with given index to strided array
   void decode(uint index, Scalar* p, int sx) const
   {
-    stream_rseek(stream->stream, index * blkbits);
+    stream_rseek(stream->stream, compressed_data_offset_bits() + index * blkbits);
     Codec::decode_block_strided_1(stream, p, shape ? shape[index] : 0, sx);
   }
 
