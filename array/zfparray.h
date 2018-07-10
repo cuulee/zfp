@@ -200,6 +200,27 @@ protected:
     zfp_field_free(field);
   }
 
+  // from the current bitstream position, attempt reading header
+  //   * does not verify header contents
+  // returns number of bits successfully read
+  size_t read_header()
+  {
+    zfp_field* field = zfp_field_alloc();
+
+    stream_rewind(stream->stream);
+    stream_skip(stream->stream, header_offset_bits());
+
+    size_t result = zfp_read_header(stream, field, ZFP_HEADER_FULL);
+
+    nx = field->nx;
+    ny = field->ny;
+    nz = field->nz;
+    type = field->type;
+
+    zfp_field_free(field);
+    return result;
+  }
+
   uint dims;           // array dimensionality (1, 2, or 3)
   zfp_type type;       // scalar type
   uint nx, ny, nz;     // array dimensions
