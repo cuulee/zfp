@@ -16,6 +16,10 @@ public:
   virtual int getDims() { return 1; }
 };
 
+Array1dTestEnv* const testEnv = new Array1dTestEnv;
+
+#include "testArrayBase.cpp"
+
 class Array1dTest : public ArrayNdTestFixture {};
 
 TEST_F(Array1dTest, when_constructorCalled_then_rateSetWithWriteRandomAccess)
@@ -46,6 +50,58 @@ TEST_F(Array1dTest, when_setRate_then_compressionRateChanged)
   EXPECT_PRED_FORMAT2(ExpectNeqPrintHexPred, oldChecksum, checksum);
 
   EXPECT_GT(oldCompressedSize, newCompressedSize);
+}
+
+TEST_F(Array1dTest, given_defaultConstructor_when_sizeAndRateSet_then_headerWritten)
+{
+  array1d arr;
+
+  // set size and rate
+  uint chosenSize = 55;
+  arr.resize(chosenSize);
+  double chosenRate = ZFP_RATE_PARAM_BITS;
+  arr.set_rate(chosenRate);
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), chosenSize, chosenRate);
+}
+
+TEST_F(Array1dTest, when_constructorWithSizeAndRate_then_headerWritten)
+{
+  uint chosenSize = 55;
+  double chosenRate = ZFP_RATE_PARAM_BITS;
+  array1d arr(chosenSize, chosenRate);
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), chosenSize, chosenRate);
+}
+
+TEST_F(Array1dTest, when_resize_then_headerUpdated)
+{
+  uint oldSize = 55;
+  double chosenRate = ZFP_RATE_PARAM_BITS;
+  array1d arr(oldSize, chosenRate);
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), oldSize, chosenRate);
+
+  uint newSize = oldSize + 1;
+  arr.resize(newSize);
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), newSize, chosenRate);
+}
+
+TEST_F(Array1dTest, when_setRate_then_headerUpdated)
+{
+  uint chosenSize = 55;
+  double oldRate = ZFP_RATE_PARAM_BITS;
+  array1d arr(chosenSize, oldRate);
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), chosenSize, oldRate);
+
+  // ensure new rate is different, so header will change
+  oldRate = arr.rate();
+  double newRate = oldRate + 0.5;
+  EXPECT_LT(oldRate, arr.set_rate(newRate));
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), chosenSize, newRate);
 }
 
 TEST_F(Array1dTest, when_generateRandomData_then_checksumMatches)
@@ -137,6 +193,12 @@ void CheckDeepCopyPerformed(array1d arr1, array1d arr2, uchar* arr1UnflushedBits
   arr1.resize(arr1.size());
   checksum = hashBitstream((uint64*)arr2.compressed_data(), arr2.compressed_size());
   EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, expectedChecksum, checksum);
+
+  // verify headers are the same
+  // (calling header_data() flushes cache, so do this after verifying compressed streams)
+  uint64 header1Checksum = hashBitstream((uint64*)arr1.header_data(), arr1.header_size());
+  uint64 header2Checksum = hashBitstream((uint64*)arr2.header_data(), arr2.header_size());
+  EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, header1Checksum, header2Checksum);
 }
 
 TEST_P(Array1dTest, given_compressedArray_when_copyConstructor_then_memberVariablesCopied)
@@ -181,8 +243,15 @@ TEST_P(Array1dTest, given_compressedArray_when_setSecondArrayEqualToFirst_then_d
   CheckDeepCopyPerformed(arr, arr2, arrUnflushedBitstreamPtr);
 }
 
+TEST_P(Array1dTest, when_fullConstructor_then_headerWritten)
+{
+  array1d arr(inputDataTotalLen, getRate(), inputDataArr);
+
+  VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), inputDataTotalLen, getRate());
+}
+
 int main(int argc, char* argv[]) {
   ::testing::InitGoogleTest(&argc, argv);
-  static_cast<void>(::testing::AddGlobalTestEnvironment(new Array1dTestEnv));
+  static_cast<void>(::testing::AddGlobalTestEnvironment(testEnv));
   return RUN_ALL_TESTS();
 }
