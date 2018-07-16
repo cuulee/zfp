@@ -305,7 +305,8 @@ TEST_P(TEST_FIXTURE, when_configureCompressedArrayFromDefaultConstructor_then_bi
   EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, expectedChecksum, checksum);
 }
 
-void CheckDeepCopyPerformed(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2, uchar* arr1UnflushedBitstreamPtr)
+// assumes arr1 was given a dirty cache
+void CheckDeepCopyPerformedViaDirtyCache(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2, uchar* arr1UnflushedBitstreamPtr)
 {
   // flush arr2 first, to ensure arr1 remains unflushed
   uint64 checksum = hashBitstream((uint64*)arr2.compressed_data(), arr2.compressed_size());
@@ -408,7 +409,7 @@ TEST_P(TEST_FIXTURE, given_compressedArray_when_copyConstructor_then_deepCopyPer
 
   ZFP_ARRAY_TYPE arr2(arr);
 
-  CheckDeepCopyPerformed(arr, arr2, arrUnflushedBitstreamPtr);
+  CheckDeepCopyPerformedViaDirtyCache(arr, arr2, arrUnflushedBitstreamPtr);
 }
 
 TEST_P(TEST_FIXTURE, given_compressedArray_when_setSecondArrayEqualToFirst_then_memberVariablesCopied)
@@ -442,7 +443,7 @@ TEST_P(TEST_FIXTURE, given_compressedArray_when_setSecondArrayEqualToFirst_then_
 
   ZFP_ARRAY_TYPE arr2 = arr;
 
-  CheckDeepCopyPerformed(arr, arr2, arrUnflushedBitstreamPtr);
+  CheckDeepCopyPerformedViaDirtyCache(arr, arr2, arrUnflushedBitstreamPtr);
 }
 
 TEST_P(TEST_FIXTURE, when_fullConstructor_then_headerWritten)
@@ -458,3 +459,49 @@ TEST_P(TEST_FIXTURE, when_fullConstructor_then_headerWritten)
   VerifyProperHeaderWritten(arr.header_data(), arr.header_size(), inputDataSideLen, inputDataSideLen, inputDataSideLen, getRate());
 #endif
 }
+
+void CheckHeadersEquivalent(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2)
+{
+  uint64 header1Checksum = hashBitstream((uint64*)arr1.header_data(), arr1.header_size());
+  uint64 header2Checksum = hashBitstream((uint64*)arr2.header_data(), arr2.header_size());
+  EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, header1Checksum, header2Checksum);
+}
+
+void CheckDeepCopyPerformed(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2)
+{
+  // flush arr1, compute its checksum, clear its bitstream, re-compute arr2's checksum
+  uint64 expectedChecksum = hashBitstream((uint64*)arr1.compressed_data(), arr1.compressed_size());
+
+#if DIMS == 1
+  arr1.resize(arr1.size(), true);
+#elif DIMS == 2
+  arr1.resize(arr1.size_x(), arr1.size_y(), true);
+#elif DIMS == 3
+  arr1.resize(arr1.size_x(), arr1.size_y(), arr1.size_z(), true);
+#endif
+
+  uint64 checksum = hashBitstream((uint64*)arr2.compressed_data(), arr2.compressed_size());
+  EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, expectedChecksum, checksum);
+}
+
+#if DIMS == 1
+TEST_P(TEST_FIXTURE, given_serializedCompressedArray_when_constructorFromSerialized_then_constructedArrIsBasicallyADeepCopy)
+{
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, getRate(), inputDataArr);
+/*#elif DIMS == 2
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, getRate(), inputDataArr);
+#elif DIMS == 3
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, inputDataSideLen, getRate(), inputDataArr);
+#endif*/
+
+  // header, compressed data contiguous in memory
+  uchar* serializedArrPtr = arr.header_data();
+  size_t serializedSize = arr.header_size() + arr.compressed_size();
+
+  ZFP_ARRAY_TYPE arr2(serializedArrPtr, serializedSize);
+
+  CheckHeadersEquivalent(arr, arr2);
+  CheckMemberVarsCopied(arr, arr2);
+  CheckDeepCopyPerformed(arr, arr2);
+}
+#endif
