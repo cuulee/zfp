@@ -1,3 +1,5 @@
+#include <cstring>
+
 TEST_F(TEST_FIXTURE, when_constructorCalled_then_rateSetWithWriteRandomAccess)
 {
   double rate = ZFP_RATE_PARAM_BITS;
@@ -213,6 +215,106 @@ TEST_F(TEST_FIXTURE, when_generateRandomData_then_checksumMatches)
 {
   EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, CHECKSUM_ORIGINAL_DATA_ARRAY, hashArray((UINT*)inputDataArr, inputDataTotalLen, 1));
 }
+
+void FailWhenNoExceptionThrown()
+{
+  FAIL() << "No exception was thrown when one was expected";
+}
+
+void FailAndPrintException(std::exception const & e)
+{
+  FAIL() << "Unexpected exception thrown: " << typeid(e).name() << std::endl << "With message: " << e.what();
+}
+
+#if DIMS == 1
+TEST_F(TEST_FIXTURE, given_serializedCompressedArray_when_constructorFromSerializedWithTooSmallMaxBufferSize_then_exceptionThrown)
+{
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+
+  // header, compressed data contiguous in memory
+  uchar* serializedArrPtr = arr.header_data();
+  size_t serializedSize = arr.header_size() + arr.compressed_size();
+
+  try {
+    ZFP_ARRAY_TYPE arr2(serializedArrPtr, 1);
+    FailWhenNoExceptionThrown();
+  } catch (std::invalid_argument const & e) {
+    EXPECT_EQ(e.what(), std::string("maxBufferSize not large enough to support an entire ZFP header"));
+  } catch (std::exception const & e) {
+    FailAndPrintException(e);
+  }
+}
+
+TEST_F(TEST_FIXTURE, when_constructorFromSerializedWithInvalidHeader_then_exceptionThrown)
+{
+  size_t dummyLen = 1024;
+  uchar dummyMemPtr[dummyLen];
+  memset(dummyMemPtr, 0, dummyLen * sizeof(uchar));
+
+  try {
+    ZFP_ARRAY_TYPE arr(dummyMemPtr, dummyLen);
+    FailWhenNoExceptionThrown();
+  } catch (std::invalid_argument const & e) {
+    EXPECT_EQ(e.what(), std::string("invalid ZFP header"));
+  } catch (std::exception const & e) {
+    FailAndPrintException(e);
+  }
+}
+
+TEST_F(TEST_FIXTURE, given_serializedCompressedArrayFromWrongScalarType_when_constructorFromSerialized_then_exceptionThrown)
+{
+  ZFP_ARRAY_TYPE_WRONG_SCALAR arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+
+  // header, compressed data contiguous in memory
+  uchar* serializedArrPtr = arr.header_data();
+  size_t serializedSize = arr.header_size() + arr.compressed_size();
+
+  try {
+    ZFP_ARRAY_TYPE arr2(serializedArrPtr, serializedSize);
+    FailWhenNoExceptionThrown();
+  } catch (std::invalid_argument const & e) {
+    EXPECT_EQ(e.what(), std::string("ZFP header specified an underlying scalar type different than that for this object"));
+  } catch (std::exception const & e) {
+    FailAndPrintException(e);
+  }
+}
+
+TEST_F(TEST_FIXTURE, given_serializedCompressedArrayFromWrongDimensionality_when_constructorFromSerialized_then_exceptionThrown)
+{
+  ZFP_ARRAY_TYPE_WRONG_DIM arr(100, 100, ZFP_RATE_PARAM_BITS);
+
+  // header, compressed data contiguous in memory
+  uchar* serializedArrPtr = arr.header_data();
+  size_t serializedSize = arr.header_size() + arr.compressed_size();
+
+  try {
+    ZFP_ARRAY_TYPE arr2(serializedArrPtr, serializedSize);
+    FailWhenNoExceptionThrown();
+  } catch (std::invalid_argument const & e) {
+    EXPECT_EQ(e.what(), std::string("ZFP header specified a dimensionality different than that for this object"));
+  } catch (std::exception const & e) {
+    FailAndPrintException(e);
+  }
+}
+
+TEST_F(TEST_FIXTURE, given_incompleteChunkOfSerializedCompressedArray_when_constructorFromSerialized_then_exceptionThrown)
+{
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+
+  // header, compressed data contiguous in memory
+  uchar* serializedArrPtr = arr.header_data();
+  size_t serializedSize = arr.header_size() + arr.compressed_size();
+
+  try {
+    ZFP_ARRAY_TYPE arr2(serializedArrPtr, serializedSize - 1);
+    FailWhenNoExceptionThrown();
+  } catch (std::invalid_argument const & e) {
+    EXPECT_EQ(e.what(), std::string("ZFP header expects a longer buffer than what was passed in"));
+  } catch (std::exception const & e) {
+    FailAndPrintException(e);
+  }
+}
+#endif
 
 #if DIMS == 1
 // with write random access in 1D, fixed-rate params rounded up to multiples of 16
