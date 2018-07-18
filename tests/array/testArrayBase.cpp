@@ -226,10 +226,15 @@ void FailAndPrintException(std::exception const & e)
   FAIL() << "Unexpected exception thrown: " << typeid(e).name() << std::endl << "With message: " << e.what();
 }
 
-#if DIMS == 1
 TEST_F(TEST_FIXTURE, given_serializedCompressedArray_when_constructorFromSerializedWithTooSmallMaxBufferSize_then_exceptionThrown)
 {
+#if DIMS == 1
   ZFP_ARRAY_TYPE arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 2
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 3
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#endif
 
   // header, compressed data contiguous in memory
   uchar* serializedArrPtr = arr.header_data();
@@ -263,7 +268,13 @@ TEST_F(TEST_FIXTURE, when_constructorFromSerializedWithInvalidHeader_then_except
 
 TEST_F(TEST_FIXTURE, given_serializedCompressedArrayFromWrongScalarType_when_constructorFromSerialized_then_exceptionThrown)
 {
+#if DIMS == 1
   ZFP_ARRAY_TYPE_WRONG_SCALAR arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 2
+  ZFP_ARRAY_TYPE_WRONG_SCALAR arr(inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 3
+  ZFP_ARRAY_TYPE_WRONG_SCALAR arr(inputDataSideLen, inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#endif
 
   // header, compressed data contiguous in memory
   uchar* serializedArrPtr = arr.header_data();
@@ -281,7 +292,13 @@ TEST_F(TEST_FIXTURE, given_serializedCompressedArrayFromWrongScalarType_when_con
 
 TEST_F(TEST_FIXTURE, given_serializedCompressedArrayFromWrongDimensionality_when_constructorFromSerialized_then_exceptionThrown)
 {
+#if DIMS == 1
   ZFP_ARRAY_TYPE_WRONG_DIM arr(100, 100, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 2
+  ZFP_ARRAY_TYPE_WRONG_DIM arr(100, 100, 100, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 3
+  ZFP_ARRAY_TYPE_WRONG_DIM arr(100, ZFP_RATE_PARAM_BITS);
+#endif
 
   // header, compressed data contiguous in memory
   uchar* serializedArrPtr = arr.header_data();
@@ -299,7 +316,13 @@ TEST_F(TEST_FIXTURE, given_serializedCompressedArrayFromWrongDimensionality_when
 
 TEST_F(TEST_FIXTURE, given_incompleteChunkOfSerializedCompressedArray_when_constructorFromSerialized_then_exceptionThrown)
 {
+#if DIMS == 1
   ZFP_ARRAY_TYPE arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 2
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 3
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#endif
 
   // header, compressed data contiguous in memory
   uchar* serializedArrPtr = arr.header_data();
@@ -314,7 +337,6 @@ TEST_F(TEST_FIXTURE, given_incompleteChunkOfSerializedCompressedArray_when_const
     FailAndPrintException(e);
   }
 }
-#endif
 
 #if DIMS == 1
 // with write random access in 1D, fixed-rate params rounded up to multiples of 16
@@ -436,7 +458,7 @@ void CheckDeepCopyPerformedViaDirtyCache(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr
   EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, header1Checksum, header2Checksum);
 }
 
-void CheckMemberVarsCopied(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2)
+void CheckMemberVarsCopied(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2, bool assertCacheSize)
 {
   double oldRate = arr1.rate();
   size_t oldCompressedSize = arr1.compressed_size();
@@ -466,7 +488,8 @@ void CheckMemberVarsCopied(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2)
 
   EXPECT_EQ(oldRate, arr2.rate());
   EXPECT_EQ(oldCompressedSize, arr2.compressed_size());
-  EXPECT_EQ(oldCacheSize, arr2.cache_size());
+  if (assertCacheSize)
+    EXPECT_EQ(oldCacheSize, arr2.cache_size());
 
 #if DIMS == 1
   EXPECT_EQ(oldSizeX, arr2.size());
@@ -492,7 +515,7 @@ TEST_P(TEST_FIXTURE, given_compressedArray_when_copyConstructor_then_memberVaria
 
   ZFP_ARRAY_TYPE arr2(arr);
 
-  CheckMemberVarsCopied(arr, arr2);
+  CheckMemberVarsCopied(arr, arr2, true);
 }
 
 TEST_P(TEST_FIXTURE, given_compressedArray_when_copyConstructor_then_deepCopyPerformed)
@@ -526,7 +549,7 @@ TEST_P(TEST_FIXTURE, given_compressedArray_when_setSecondArrayEqualToFirst_then_
 
   ZFP_ARRAY_TYPE arr2 = arr;
 
-  CheckMemberVarsCopied(arr, arr2);
+  CheckMemberVarsCopied(arr, arr2, true);
 }
 
 TEST_P(TEST_FIXTURE, given_compressedArray_when_setSecondArrayEqualToFirst_then_deepCopyPerformed)
@@ -586,15 +609,15 @@ void CheckDeepCopyPerformed(ZFP_ARRAY_TYPE arr1, ZFP_ARRAY_TYPE arr2)
   EXPECT_PRED_FORMAT2(ExpectEqPrintHexPred, expectedChecksum, checksum);
 }
 
-#if DIMS == 1
 TEST_P(TEST_FIXTURE, given_serializedCompressedArray_when_constructorFromSerialized_then_constructedArrIsBasicallyADeepCopy)
 {
+#if DIMS == 1
   ZFP_ARRAY_TYPE arr(inputDataSideLen, getRate(), inputDataArr);
-/*#elif DIMS == 2
+#elif DIMS == 2
   ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, getRate(), inputDataArr);
 #elif DIMS == 3
   ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, inputDataSideLen, getRate(), inputDataArr);
-#endif*/
+#endif
 
   // header, compressed data contiguous in memory
   uchar* serializedArrPtr = arr.header_data();
@@ -603,7 +626,7 @@ TEST_P(TEST_FIXTURE, given_serializedCompressedArray_when_constructorFromSeriali
   ZFP_ARRAY_TYPE arr2(serializedArrPtr, serializedSize);
 
   CheckHeadersEquivalent(arr, arr2);
-  CheckMemberVarsCopied(arr, arr2);
+  // cache size not preserved
+  CheckMemberVarsCopied(arr, arr2, false);
   CheckDeepCopyPerformed(arr, arr2);
 }
-#endif
