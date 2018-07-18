@@ -3,7 +3,6 @@
 
 #include <cstddef>
 #include <iterator>
-#include <stdexcept>
 #include <cstring>
 #include "zfparray.h"
 #include "zfpcodec.h"
@@ -32,48 +31,9 @@ public:
 
   // constructor, from previously-serialized compressed array
   array1(const uchar* buffer, size_t maxBufferSize = 0) :
-    array(1, Codec::type)
+    array(1, Codec::type, buffer, maxBufferSize)
   {
-    if (maxBufferSize && maxBufferSize < header_size()) {
-      throw std::invalid_argument("maxBufferSize not large enough to support an entire ZFP header");
-    }
-
-    // setup stream enough to read [known length] header
-    zfp_stream_set_bit_stream(stream, stream_open((void*)buffer, header_size()));
-
-    // read header to populate member variables associated with zfp_stream
-    if (read_header() != header_size_bits()) {
-      throw std::invalid_argument("invalid ZFP header");
-    }
-
-    // verify read-header contents
-    if (type != Codec::type) {
-      throw std::invalid_argument("ZFP header specified an underlying scalar type different than that for this object");
-    }
-
-    if (!nx || ny || nz) {
-      throw std::invalid_argument("ZFP header specified a dimensionality different than that for this object");
-    }
-
-    // verify buffer is large enough, with what header describes
-    zfp_field* field = zfp_field_1d(0, type, nx);
-    size_t blocks = (size_t)((std::max(nx, 1u)) + 3) / 4;
-    size_t describedSize = ((header_size_bits() + blocks * stream->maxbits + stream_word_bits - 1) & ~(stream_word_bits - 1)) / CHAR_BIT;
-    zfp_field_free(field);
-    if (maxBufferSize && maxBufferSize < describedSize) {
-      throw std::invalid_argument("ZFP header expects a longer buffer than what was passed in");
-    }
-
-    // everything is valid
-    // set remaining class variables, allocate space, copy entire buffer into place
-
-    // set_rate() residual behavior (rate itself was set on zfp_stream* in zfp_read_header())
-    blkbits = stream->maxbits;
-    blksize = blkbits / CHAR_BIT;
-
-    // calls alloc(false)
     resize(nx, false);
-
     memcpy(data, buffer, bytes + header_size());
   }
 

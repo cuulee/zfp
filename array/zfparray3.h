@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <iterator>
+#include <cstring>
 #include "zfparray.h"
 #include "zfpcodec.h"
 #include "zfp/cache.h"
@@ -26,6 +27,14 @@ public:
     resize(nx, ny, nz, p == 0);
     if (p)
       set(p);
+  }
+
+  // constructor, from previously-serialized compressed array
+  array3(const uchar* buffer, size_t maxBufferSize = 0) :
+    array(3, Codec::type, buffer, maxBufferSize)
+  {
+    resize(nx, ny, nz, false);
+    memcpy(data, buffer, bytes + header_size());
   }
 
   // copy constructor--performs a deep copy

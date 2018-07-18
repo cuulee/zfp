@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <stdexcept>
 #include "zfp.h"
 #include "zfp/memory.h"
 
@@ -32,6 +33,58 @@ protected:
     stream(zfp_stream_open(0)),
     shape(0)
   {}
+
+  // constructor, from previously-serialized compressed array
+  array(uint dims, zfp_type type, const uchar* buffer, size_t maxBufferSize) :
+    dims(dims), type(type),
+    nx(0), ny(0), nz(0),
+    bx(0), by(0), bz(0),
+    blocks(0), blkvals(1u << (2 * dims)), blkbits(0), blksize(0),
+    bytes(0), data(0),
+    stream(zfp_stream_open(0)),
+    shape(0)
+  {
+    if (maxBufferSize && maxBufferSize < header_size()) {
+      stream_close(stream->stream);
+      zfp_stream_close(stream);
+      throw std::invalid_argument("maxBufferSize not large enough to support an entire ZFP header");
+    }
+
+    // setup stream enough to read [known length] header
+    zfp_stream_set_bit_stream(stream, stream_open((void*)buffer, header_size()));
+
+    // read header to populate member variables associated with zfp_stream
+    try {
+      read_header();
+    } catch (std::invalid_argument const & e) {
+      stream_close(stream->stream);
+      zfp_stream_close(stream);
+      throw;
+    }
+
+    // verify buffer is large enough, with what header describes
+    zfp_field* field = zfp_field_3d(0, type, nx, ny, nz);
+    uint mx = ((std::max(nx, 1u)) + 3) / 4;
+    uint my = ((std::max(ny, 1u)) + 3) / 4;
+    uint mz = ((std::max(nz, 1u)) + 3) / 4;
+    size_t blocks = (size_t)mx * (size_t)my * (size_t)mz;
+    size_t describedSize = ((header_size_bits() + blocks * stream->maxbits + stream_word_bits - 1) & ~(stream_word_bits - 1)) / CHAR_BIT;
+    zfp_field_free(field);
+    if (maxBufferSize && maxBufferSize < describedSize) {
+      stream_close(stream->stream);
+      zfp_stream_close(stream);
+      throw std::invalid_argument("ZFP header expects a longer buffer than what was passed in");
+    }
+
+    // everything is valid
+    // set remaining class variables, allocate space, copy entire buffer into place
+
+    // set_rate() residual behavior (rate itself was set on zfp_stream* in zfp_read_header())
+    blkbits = stream->maxbits;
+    blksize = blkbits / CHAR_BIT;
+
+    // resize() called in sub-class constructor, followed by memcpy()
+  }
 
   // copy constructor--performs a deep copy
   array(const array& a) :
@@ -184,6 +237,24 @@ protected:
     return (header_size_bits() + stream_word_bits - 1) & ~(stream_word_bits - 1);
   }
 
+  // returns if dimension lengths consistent with dimensionality
+  bool valid_dims(uint nx, uint ny, uint nz) const
+  {
+    bool result = false;
+    switch(dims) {
+      case 3:
+        result = nx && ny && nz;
+        break;
+      case 2:
+        result = nx && ny && !nz;
+        break;
+      case 1:
+        result = nx && !ny && !nz;
+        break;
+    }
+    return result;
+  }
+
   // [over]write header with latest metadata
   void write_header()
   {
@@ -201,16 +272,30 @@ protected:
   }
 
   // from the current bitstream position, attempt reading header
-  //   * does not verify header contents
-  // returns number of bits successfully read
-  size_t read_header()
+  // and verify header contents (throws exceptions upon failure)
+  void read_header()
   {
     zfp_field* field = zfp_field_alloc();
 
     stream_rewind(stream->stream);
     stream_skip(stream->stream, header_offset_bits());
 
-    size_t result = zfp_read_header(stream, field, ZFP_HEADER_FULL);
+    // read header to populate member variables associated with zfp_stream
+    if (zfp_read_header(stream, field, ZFP_HEADER_FULL) != header_size_bits()) {
+      zfp_field_free(field);
+      throw std::invalid_argument("invalid ZFP header");
+    }
+
+    // verify read-header contents
+    if (type != field->type) {
+      zfp_field_free(field);
+      throw std::invalid_argument("ZFP header specified an underlying scalar type different than that for this object");
+    }
+
+    if (!valid_dims(field->nx, field->ny, field->nz)) {
+      zfp_field_free(field);
+      throw std::invalid_argument("ZFP header specified a dimensionality different than that for this object");
+    }
 
     nx = field->nx;
     ny = field->ny;
@@ -218,7 +303,6 @@ protected:
     type = field->type;
 
     zfp_field_free(field);
-    return result;
   }
 
   uint dims;           // array dimensionality (1, 2, or 3)
