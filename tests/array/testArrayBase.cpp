@@ -1,4 +1,5 @@
 #include <cstring>
+#include "zfputils.h"
 
 TEST_F(TEST_FIXTURE, when_constructorCalled_then_rateSetWithWriteRandomAccess)
 {
@@ -336,6 +337,39 @@ TEST_F(TEST_FIXTURE, given_incompleteChunkOfSerializedCompressedArray_when_const
   } catch (std::exception const & e) {
     FailAndPrintException(e);
   }
+}
+
+TEST_F(TEST_FIXTURE, given_serializedCompressedArray_when_factoryFuncConstruct_then_correctTypeConstructed)
+{
+#if DIMS == 1
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 2
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#elif DIMS == 3
+  ZFP_ARRAY_TYPE arr(inputDataSideLen, inputDataSideLen, inputDataSideLen, ZFP_RATE_PARAM_BITS);
+#endif
+
+  uchar* serializedArrPtr = arr.header_data();
+  size_t serializedSize = arr.header_size() + arr.compressed_size();
+
+  array* arr2 = construct_from_stream(serializedArrPtr, serializedSize);
+
+  ASSERT_TRUE(arr2 != NULL);
+
+  // must call correct destructor
+  ZFP_ARRAY_TYPE* arr3 = ((ZFP_ARRAY_TYPE*)arr2);
+  delete arr3;
+}
+
+TEST_F(TEST_FIXTURE, given_uncompatibleSerializedMem_when_factoryFuncConstruct_then_returnsNull)
+{
+  size_t dummyLen = 1024;
+  uchar dummyMemPtr[dummyLen];
+  memset(dummyMemPtr, 0, dummyLen * sizeof(uchar));
+
+  array* arr = construct_from_stream(dummyMemPtr, dummyLen);
+
+  ASSERT_TRUE(arr == NULL);
 }
 
 #if DIMS == 1
